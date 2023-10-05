@@ -12,14 +12,15 @@
 #include "managed-journal-file.h"
 #include "path-util.h"
 #include "string-util.h"
+#include "tests.h"
 
-static void test_journal_flush(int argc, char *argv[]) {
+static void test_journal_flush_one(int argc, char *argv[]) {
         _cleanup_(mmap_cache_unrefp) MMapCache *m = NULL;
         _cleanup_free_ char *fn = NULL;
         char dn[] = "/var/tmp/test-journal-flush.XXXXXX";
         ManagedJournalFile *new_journal = NULL;
         sd_journal *j = NULL;
-        unsigned n = 0;
+        unsigned n, limit;
         int r;
 
         m = mmap_cache_new();
@@ -40,6 +41,8 @@ static void test_journal_flush(int argc, char *argv[]) {
 
         sd_journal_set_data_threshold(j, 0);
 
+        n = 0;
+        limit = slow_tests_enabled() ? 10000 : 1000;
         SD_JOURNAL_FOREACH(j) {
                 Object *o;
                 JournalFile *f;
@@ -60,7 +63,7 @@ static void test_journal_flush(int argc, char *argv[]) {
                                     -EPROTONOSUPPORT, /* unsupported compression */
                                     -EIO));           /* file rotated */
 
-                if (++n >= 10000)
+                if (++n >= limit)
                         break;
         }
 
@@ -72,12 +75,14 @@ static void test_journal_flush(int argc, char *argv[]) {
         assert_se(rmdir(dn) == 0);
 }
 
-int main(int argc, char *argv[]) {
+TEST(journal_flush) {
         assert_se(setenv("SYSTEMD_JOURNAL_COMPACT", "0", 1) >= 0);
-        test_journal_flush(argc, argv);
-
-        assert_se(setenv("SYSTEMD_JOURNAL_COMPACT", "1", 1) >= 0);
-        test_journal_flush(argc, argv);
-
-        return 0;
+        test_journal_flush_one(saved_argc, saved_argv);
 }
+
+TEST(journal_flush_compact) {
+        assert_se(setenv("SYSTEMD_JOURNAL_COMPACT", "1", 1) >= 0);
+        test_journal_flush_one(saved_argc, saved_argv);
+}
+
+DEFINE_TEST_MAIN(LOG_INFO);
